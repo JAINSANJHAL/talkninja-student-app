@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { supabase } from '../lib/supabase';
 
 const QUESTION = 'If you could have any superpower for a day, what would it be and why?';
 const TOTAL_SECS = 120; // 2 min
@@ -17,11 +18,15 @@ const FEEDBACK = [
   { label: 'Confidence', score: 17, max: 20, badge: 'Excellent', badgeColor: '#3D7A4F', badgeBg: '#E8F5EA', barColor: '#5A9E6A' },
 ];
 
+// Hardcoded UUID for "Mia" → student s1
+const MIA_STUDENT_UUID = 'aaaaaaaa-0000-0000-0000-000000000001';
+
 const BAR_HEIGHTS = [12, 28, 40, 36, 22, 18, 32, 44, 38, 26, 20, 34, 42, 30, 16];
 
 export default function RecordingScreen({ onStop, challengeTopic }) {
   const [elapsed, setElapsed] = useState(45);
   const [bars, setBars] = useState(BAR_HEIGHTS);
+  const [saving, setSaving] = useState(false);
   const intervalRef = useRef(null);
   const waveRef = useRef(null);
 
@@ -52,12 +57,43 @@ export default function RecordingScreen({ onStop, challengeTopic }) {
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   const progress = elapsed / TOTAL_SECS;
 
+  const handleStop = async () => {
+    setSaving(true);
+    try {
+      // Convert FEEDBACK scores (out of 20) to percentages (× 5)
+      const clarity    = FEEDBACK.find((f) => f.label === 'Clarity')?.score    * 5; // 85
+      const pacing     = FEEDBACK.find((f) => f.label === 'Pacing')?.score     * 5; // 100
+      const fillers    = FEEDBACK.find((f) => f.label === 'Fillers')?.score    * 5; // 50
+      const confidence = FEEDBACK.find((f) => f.label === 'Confidence')?.score * 5; // 85
+      const vocabulary = 75;
+      const overall    = Math.round((clarity + pacing + fillers + confidence + vocabulary) / 5);
+
+      await supabase.from('sessions').insert({
+        student_id:     MIA_STUDENT_UUID,
+        session_number: 99,
+        date:           new Date().toLocaleDateString(),
+        overall,
+        clarity,
+        pacing,
+        confidence,
+        fillers,
+        vocabulary,
+      });
+    } catch (err) {
+      console.warn('Failed to save session:', err.message);
+    } finally {
+      setSaving(false);
+      onStop();
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-full" style={{ backgroundColor: '#fff' }}>
       {/* Top bar */}
       <div className="px-5 pt-14 pb-4 flex items-center gap-3">
         <button
-          onClick={onStop}
+          onClick={handleStop}
+          disabled={saving}
           className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
           style={{ backgroundColor: '#F5F2EC' }}
         >
@@ -187,8 +223,9 @@ export default function RecordingScreen({ onStop, challengeTopic }) {
       {/* Stop button */}
       <div className="flex flex-col items-center pb-8 mt-auto pt-2">
         <button
-          onClick={onStop}
-          className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+          onClick={handleStop}
+          disabled={saving}
+          className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-lg disabled:opacity-60"
           style={{
             backgroundColor: '#81B5C4',
             boxShadow: '0 0 0 6px rgba(129,181,196,0.2), 0 8px 20px rgba(129,181,196,0.4)',
@@ -196,7 +233,9 @@ export default function RecordingScreen({ onStop, challengeTopic }) {
         >
           <div className="w-6 h-6 rounded-md" style={{ backgroundColor: '#fff' }} />
         </button>
-        <p className="mt-2 text-xs font-semibold" style={{ color: '#81B5C4' }}>Stop recording</p>
+        <p className="mt-2 text-xs font-semibold" style={{ color: '#81B5C4' }}>
+          {saving ? 'Saving...' : 'Stop recording'}
+        </p>
       </div>
     </div>
   );
